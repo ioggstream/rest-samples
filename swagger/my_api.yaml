@@ -1,0 +1,34 @@
+swagger: "2.0"
+info:
+  contact:
+    email: robipolli@gmail.com
+    name: Roberto Polli
+    url: 'https://twitter.com/ioggstream'
+  description: |
+    API with non-repudiation header.
+  license:
+    name: Apache 2.0
+    url: 'http://www.apache.org/licenses/LICENSE-2.0.html'
+  termsOfService: 'http://swagger.io/terms/'
+  title: |
+    Sample API
+  version: 0.0.1
+  x-api-id: b9ec7026-5da5-4db6-a959-fce72db5de64
+  x-audience: |
+    Definire qui l'audience delle API
+host: virtserver.swaggerhub.com
+basePath: /
+schemes:
+  - http
+paths:
+  /ping:
+    get:
+      x-swagger-router-controller: api
+      operationId: ping
+      produces:
+        - application/json
+      responses:
+        200:
+          description: ciao
+
+

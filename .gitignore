@@ -49,6 +49,8 @@ coverage.xml
 # Translations
 *.mo
 *.pot
+lextab.py
+yacctab.py
 
 # Django stuff:
 *.log
@@ -99,3 +101,10 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# ide
+.vscode
+
+
+*.key
+*.pub

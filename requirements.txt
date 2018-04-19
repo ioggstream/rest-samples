@@ -1,0 +1,3 @@
+connexion
+python-jose
+flake8
