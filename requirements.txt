@@ -2,3 +2,5 @@ connexion
 python-jose
 flake8
 cryptography
+pyOpenSSL
+nose

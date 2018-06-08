@@ -1,104 +1,95 @@
 # https://python-jose.readthedocs.io/en/latest/jws/index.html#examples
 from jose import jws
-from Crypto.PublicKey import RSA
 from os.path import isfile
 import time
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
-
 from hashlib import sha256
-
-header = {
-    'iss': 'ipa/oou',
-    'aud': 'ipa/oou',
-    'iat': '2018-01-01T11:00:00Z',
-    'exp': '2018-01-01T12:00:00Z',
-    'jti': 'the header id',
-    'sub': 'the message id',
-    'b_hash': 'my-body-hash'
-}
-
-
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa, ec
-from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
-
 import OpenSSL
-
-def generate_ecdsa_key(key_curve='secp256r1'):
-    key_curve = key_curve.lower()
-    if ('secp256r1' == key_curve):
-        key = ec.generate_private_key(ec.SECP256R1(), default_backend())
-    elif ('secp384r1' == key_curve):
-        key = ec.generate_private_key(ec.SECP384R1(), default_backend())
-    elif ('secp521r1' == key_curve):
-        key = ec.generate_private_key(ec.SECP521R1(), default_backend())
-    else:
-        raise NotImplementedError('Unsupported key curve: ' + key_curve)
-    key_pem = key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.TraditionalOpenSSL, encryption_algorithm=NoEncryption())
-    return OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_pem)
+from cert import extract_public_key, load_private_key, serialize_key
+from cryptography.hazmat.primitives.asymmetric import rsa, ec
+import yaml
 
 
-def create_key(fpath, algorithm='ECDSA'):
-    if isfile(fpath + ".key"):
-        return
-    if algorithm == 'ECDSA':
-        f = generate_ecdsa_key
-    elif algorithm == 'RSA':
-        f = lambda : RSA.generate(2048).exportKey("PEM")
-    else:
-        raise NotImplementedError("Allowed algorithms: RSA, ECDSA")
-    
-    with open(fpath + ".key", 'wb') as fh:
-        fh.write(f())
-
-    with open(fpath + ".pub", 'wb') as fh:
-        fh.write(key.publickey().exportKey('PEM'))
+def get_algorithm(key):
+    keymap = {
+        rsa.RSAPublicKey: 'RS256',
+        ec.EllipticCurvePublicKey: 'ES256',
+        rsa.RSAPrivateKey: 'RS256',
+        ec.EllipticCurvePrivateKey: 'ES256'
+    }
+    for k, v in keymap.items():
+        if isinstance(key, k):
+            return v
+    raise NotImplementedError("Key algorithm not supported", key)
 
 
-def verify(fpath, hdr):
-    pk = open(fpath).read()
-    try:
-        jws.verify(hdr, pk, algorithms='RS256')
-    except:
-        raise
+def verify(cert_path, token):
+    with open(cert_path, 'rb') as fp:
+        return verify_s(fp.read(), token)
 
 
-def sign_header(fpath, hdr, x5c=False):
-    with open(fpath) as fh:
+def verify_s(stream, token):
+    public_key = extract_public_key(stream)
+    public_key_as_string = serialize_key(public_key).decode('ascii')
+    return jws.verify(token, public_key_as_string, algorithms=get_algorithm(public_key))
+
+
+def sign_header(fpath, claim):
+    with open(fpath, 'rb') as fh:
         k = fh.read()
+    return jws.sign(claim, k, algorithm=get_algorithm(load_private_key(fpath)))
 
-    return jws.sign(hdr, k, algorithm='RS256')
+
+def test_sign_verify():
+    from tempfile import mktemp
+    from cert import create_key
+    from os import unlink
+    h = {'a': 1}
+
+    for algorithm in ('RSA', 'ECDSA'):
+        try:
+            f = mktemp()
+            create_key(f, algorithm=algorithm)
+            token = sign_header(f + '.key', h)
+            yield verify, f + '.pem', token
+        finally:
+            unlink(f + ".pem")
+            unlink(f + ".key")
+            unlink(f + ".pub")
 
 
 def hash_body(body):
     return sha256(body).hexdigest()
 
 
-def get_certificate_from_pem(pem_file):
-    backend = default_backend()
-    with open(pem_file, 'rb') as f:
-        crt_data = f.read()
-        return x509.load_pem_x509_certificate(crt_data, backend)
-    
-
 def cli(url="http://localhost:8080/ping", data=None):
     """A simple client validating Non-Repudiation header."""
     import requests
-    h = {
-        'iss': 'client',
-        'aud': url,
-        'sub': 'document_id',
-        'exp': int(time.time() + 10)
+    header = {
+        'iss': 'ipa/oou',
+        'aud': 'ipa/oou',
+        'iat': int(time.time()),
+        'exp': int(time.time() + 10),
+        'jti': 'the header id',
+        'sub': 'the message id',
+        'date': '2018-01-01T12:00:00Z',
+        'b_hash': 'my-body-hash'
     }
+
     if data:
         h['b_hash'] = hash_body(data)
     headers = {
-        'Non-Repudiation': sign_header('client.key', h)
+        'Non-Repudiation': sign_header('client.key', header)
     }
     res = requests.get(url, headers=headers)
     print(res.headers)
     print(res.content)
     print("verify Non-Repudiation")
-    verify('server.pub', res.headers['Non-Repudiation'])
+    non_repudiation = res.headers['Non-Repudiation']
+    claims = yaml.load(jws.get_unverified_claims(non_repudiation))
+    x5c = claims['x5c']
+    if x5c:
+        cert = f'-----BEGIN CERTIFICATE-----\n{x5c}\n-----END CERTIFICATE-----'.encode('ascii')
+    else:
+        cert = open('server.pub', 'rb').read()
+    verify_s(cert, non_repudiation)
     print(res)

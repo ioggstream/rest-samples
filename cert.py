@@ -117,7 +117,10 @@ def create_self_signed_cert(key):
     return cert.public_bytes(encoding=serialization.Encoding.PEM)
 
 
-def extract_public_key(cert_pem):
-    with open(cert_pem, 'rb') as fh:
-        cert = x509.load_pem_x509_certificate(fh.read(), default_backend())
+def extract_public_key(pem_data):
+    cert = x509.load_pem_x509_certificate(pem_data, default_backend())
     return cert.public_key()
+
+
+def cert_to_string(cert_pem):
+    return cert_pem.replace('\n', '').split("-----")[2]
