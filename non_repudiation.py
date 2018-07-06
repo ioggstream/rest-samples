@@ -76,7 +76,7 @@ def cli(url="http://localhost:8080/ping", data=None):
     }
 
     if data:
-        h['b_hash'] = hash_body(data)
+        header['b_hash'] = hash_body(data)
     headers = {
         'Non-Repudiation': sign_header('client.key', header)
     }
@@ -93,3 +93,6 @@ def cli(url="http://localhost:8080/ping", data=None):
         cert = open('server.pub', 'rb').read()
     verify_s(cert, non_repudiation)
     print(res)
+
+def test_cli():
+    ret = cli(data={"hello": "world"})
